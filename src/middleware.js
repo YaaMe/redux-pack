@@ -17,9 +17,15 @@ function handleEventHook(meta, hook, ...args) {
   }
 }
 
-function handlePromise(dispatch, getState, action) {
+function handlePromise(dispatch, getState, action, options = {}) {
   const { promise, type, payload, meta } = action;
-
+  const {
+    parseType = type => ({
+      successType: type,
+      failureType: type
+    })
+  } = options;
+  const { successType, failureType } = parseType(type);
   // it is sometimes useful to be able to track the actions and associated promise lifecycle with a
   // sort of unique identifier. This is that.
   const transactionId = uuid.v4();
@@ -38,7 +44,7 @@ function handlePromise(dispatch, getState, action) {
 
   const success = data => {
     dispatch({
-      type,
+      successType,
       payload: data,
       meta: {
         ...meta,
@@ -54,7 +60,7 @@ function handlePromise(dispatch, getState, action) {
 
   const failure = error => {
     dispatch({
-      type,
+      failureType,
       payload: error,
       error: true,
       meta: {
@@ -84,6 +90,7 @@ const middleware = store => next => action => {
     return null;
   }
 
+
   // this is the convention-based promise middleware. Ideally, all "async actions" would go through
   // this pathway.
   if (isPromise(action.promise)) {
@@ -94,5 +101,21 @@ const middleware = store => next => action => {
   return next(action);
 };
 
+const customMiddleware = (options = {}) => store => next => action => {
+  const {pass = action => isPromise(action.promise)} = options;
 
-module.exports = middleware;
+  if (action == null) {
+    return null;
+  }
+
+  if (pass(action)) {
+    return handlePromise(store.dispatch, store.getState, action, options);
+  }
+
+  return next(action);
+};
+
+module.exports = {
+  middleware,
+  customMiddleware
+};
